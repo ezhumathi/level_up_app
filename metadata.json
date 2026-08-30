@@ -1,0 +1,6 @@
+{
+  "name": "Aura Kinetic - Level Up HUD",
+  "description": "Futuristic cyberpunk discipline and habit leveling system with real-time XP scoring, 3D interactive HUD core, workout logging, routines tracker, and Bhuva AI coach.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
