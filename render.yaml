@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: level-up-app
+    env: docker
+    plan: standard
+    port: 3000
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
