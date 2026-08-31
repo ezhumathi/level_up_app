@@ -452,9 +452,18 @@ async function start() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    // Serve static files (CSS, JS, images, etc)
+    app.use(express.static(distPath, { 
+      extensions: ['html', 'js', 'css', 'json', 'jpg', 'png']
+    }));
+    // Catch-all for SPA: serve index.html for all non-API routes
+    app.get(/^(?!\/api).*/, (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+        if (err) {
+          console.error('Error serving index.html:', err);
+          res.status(404).send('Not Found');
+        }
+      });
     });
   }
 
