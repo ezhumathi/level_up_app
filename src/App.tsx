@@ -102,7 +102,7 @@ export default function App() {
     }
   });
 
-  const [heatmapDays] = useState<HeatmapDay[]>(() => generate365DaysHeatmap());
+  const [heatmapDays, setHeatmapDays] = useState<HeatmapDay[]>([]);
 
   // UI Modals & Settings
   const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
@@ -166,6 +166,9 @@ export default function App() {
         }
         if (Array.isArray(data.achievements) && data.achievements.length > 0) {
           setAchievements(data.achievements);
+        }
+        if (Array.isArray((data as any).heatmapDays) && (data as any).heatmapDays.length > 0) {
+          setHeatmapDays((data as any).heatmapDays);
         }
       }
     } catch (err) {
