@@ -5,6 +5,11 @@ export function getTodayKey(): string {
   ).padStart(2, '0')}`;
 }
 
+// alias expected by some components
+export function getTodayLocalKey(): string {
+  return getTodayKey();
+}
+
 export function formatDisplayDate(dateKey: string): string {
   const d = new Date(dateKey);
   const dayName = d.toLocaleDateString(undefined, { weekday: 'long' });
