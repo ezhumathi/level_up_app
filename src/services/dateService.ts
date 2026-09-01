@@ -1,30 +1,27 @@
-// Utilities for consistent date keys and display
-export function formatDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`; // YYYY-MM-DD
+export function getTodayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
 }
 
+// alias expected by some components
 export function getTodayLocalKey(): string {
-  return formatDateKey(new Date());
+  return getTodayKey();
 }
 
-export function getUTCDateKey(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function formatForDisplay(dateKey: string): string {
-  // input: YYYY-MM-DD -> output: e.g. Mon, 30 Aug
-  try {
-    const [y, m, d] = dateKey.split('-').map((s) => parseInt(s, 10));
-    const dt = new Date(y, m - 1, d);
-    return dt.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  } catch (err) {
-    return dateKey;
-  }
+export function formatDisplayDate(dateKey: string): string {
+  const d = new Date(dateKey);
+  const dayName = d.toLocaleDateString(undefined, { weekday: 'long' });
+  const monthDayYear = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  return `${dayName}, ${monthDayYear}`;
 }
 
 export function isSameDateKey(a: string, b: string): boolean {
   return a === b;
+}
+
+export function isPastDate(dateKey: string): boolean {
+  const today = getTodayKey();
+  return dateKey < today;
 }
