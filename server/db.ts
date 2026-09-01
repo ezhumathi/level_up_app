@@ -130,6 +130,27 @@ const HeatmapDaySchema = new mongoose.Schema(
 );
 HeatmapDaySchema.index({ date: 1, userId: 1 }, { unique: true });
 
+// DailyProgress: stores per-day habit states for a user
+const DailyProgressSchema = new mongoose.Schema(
+  {
+    date: { type: String, required: true }, // YYYY-MM-DD
+    userId: { type: String, default: 'default_user' },
+    // items can reference missions, routines, gauges by id and hold completed state
+    items: [
+      {
+        id: { type: String, required: true },
+        type: { type: String, enum: ['mission', 'routine', 'gauge'], required: true },
+        completed: { type: Boolean, default: false },
+        completedAt: { type: Date, default: null },
+      },
+    ],
+    completionPercentage: { type: Number, default: 0 },
+    locked: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+DailyProgressSchema.index({ date: 1, userId: 1 }, { unique: true });
+
 const ChatMessageSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true },
@@ -148,6 +169,7 @@ export const PersonalRecordModel = mongoose.model('PersonalRecord', PersonalReco
 export const RoutineItemModel = mongoose.model('RoutineItem', RoutineItemSchema);
 export const AchievementModel = mongoose.model('Achievement', AchievementSchema);
 export const HeatmapDayModel = mongoose.model('HeatmapDay', HeatmapDaySchema);
+export const DailyProgressModel = mongoose.model('DailyProgress', DailyProgressSchema);
 export const ChatMessageModel = mongoose.model('ChatMessage', ChatMessageSchema);
 
 export async function connectMongoDB(): Promise<{ success: boolean; message: string }> {

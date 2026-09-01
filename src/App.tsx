@@ -30,6 +30,7 @@ import { MissionModal } from './components/MissionModal';
 import { LevelUpCelebration } from './components/LevelUpCelebration';
 import { soundFx } from './utils/audio';
 import { api } from './services/api';
+import { getTodayKey, formatDisplayDate, isPastDate } from './services/dateService';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('home');
@@ -102,7 +103,11 @@ export default function App() {
     }
   });
 
-  const [heatmapDays] = useState<HeatmapDay[]>(() => generate365DaysHeatmap());
+  const [heatmapDays, setHeatmapDays] = useState<HeatmapDay[]>(() => generate365DaysHeatmap());
+
+  // Today's date key and daily progress
+  const [todayKey, setTodayKey] = useState<string>(() => getTodayKey());
+  const [dailyProgress, setDailyProgress] = useState<any | null>(null);
 
   // UI Modals & Settings
   const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
@@ -159,6 +164,7 @@ export default function App() {
           setPersonalRecords(data.personalRecords);
         }
         if (Array.isArray(data.morningRoutine) && data.morningRoutine.length > 0) {
+          // Keep routines as templates; daily progress will hold per-day status
           setMorningRoutine(data.morningRoutine);
         }
         if (Array.isArray(data.eveningRoutine) && data.eveningRoutine.length > 0) {
@@ -168,12 +174,70 @@ export default function App() {
           setAchievements(data.achievements);
         }
       }
+
+      // Load or create today's daily progress
+      const today = getTodayKey();
+      setTodayKey(today);
+      let dp = await api.getDailyProgress(today);
+      if (!dp) {
+        // Create initial daily progress based on current templates
+        const items: any[] = [];
+        missions.forEach((m) => items.push({ id: m.id, type: 'mission', completed: m.completed }));
+        morningRoutine.forEach((r) => items.push({ id: r.id, type: 'routine', completed: r.status === 'completed' }));
+        eveningRoutine.forEach((r) => items.push({ id: r.id, type: 'routine', completed: r.status === 'completed' }));
+        fitnessGauges.forEach((g) => items.push({ id: g.id, type: 'gauge', completed: g.current >= g.target }));
+
+        const created = await api.saveDailyProgress({ date: today, items });
+        dp = created || null;
+      }
+
+      setDailyProgress(dp);
+
+      // Merge daily progress into UI routines so the UI reflects per-day state
+      if (dp && Array.isArray(dp.items)) {
+        const routineMap: Record<string, any> = {};
+        dp.items.forEach((it: any) => {
+          if (it.type === 'routine') routineMap[it.id] = it;
+        });
+
+        setMorningRoutine((prev) => prev.map((r) => ({ ...r, status: routineMap[r.id]?.completed ? 'completed' : 'pending' })));
+        setEveningRoutine((prev) => prev.map((r) => ({ ...r, status: routineMap[r.id]?.completed ? 'completed' : 'pending' })));
+      }
+
+      // Load heatmap data for the past year
+      try {
+        const end = getTodayKey();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 364);
+        const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+        const rows = await api.fetchDailyRange(start, end);
+        if (Array.isArray(rows)) {
+          const mapped: HeatmapDay[] = rows.map((r: any) => {
+            const score = r.completionPercentage || 0;
+            let count = 0;
+            if (score >= 76) count = 4;
+            else if (score >= 51) count = 3;
+            else if (score >= 26) count = 2;
+            else if (score >= 1) count = 1;
+            return {
+              date: r.date,
+              count,
+              score,
+              missionsCount: r.items ? r.items.length : 0,
+              dayOfWeek: new Date(r.date).getDay(),
+            };
+          });
+          setHeatmapDays(mapped);
+        }
+      } catch (err) {
+        console.warn('Heatmap load failed:', err);
+      }
     } catch (err) {
       console.warn('Real-time sync notice:', err);
     } finally {
       setIsSyncing(false);
     }
-  }, []);
+  }, [missions, morningRoutine, eveningRoutine, fitnessGauges]);
 
   useEffect(() => {
     loadDataFromMongo();
@@ -224,6 +288,19 @@ export default function App() {
     // Persist mission state in MongoDB
     if (targetMission) {
       await api.updateMission(id, { completed: nextCompleted });
+    }
+
+    // Update daily progress if present
+    if (dailyProgress) {
+      const items = dailyProgress.items.map((it: any) => {
+        if (it.id === id && it.type === 'mission') {
+          const completed = !it.completed;
+          return { ...it, completed, completedAt: completed ? new Date() : null };
+        }
+        return it;
+      });
+      const saved = await api.saveDailyProgress({ date: dailyProgress.date, items });
+      if (saved) setDailyProgress(saved);
     }
   };
 
@@ -280,6 +357,20 @@ export default function App() {
 
     // Persist in MongoDB
     await api.updateFitnessGauge(id, newVal);
+
+    // Update daily progress gauge item if present
+    if (dailyProgress) {
+      const items = dailyProgress.items.map((it: any) => {
+        if (it.id === id && it.type === 'gauge') {
+          const completed = newVal >=
+            (fitnessGauges.find((fg) => fg.id === id)?.target || 0);
+          return { ...it, completed, completedAt: completed ? new Date() : null };
+        }
+        return it;
+      });
+      const saved = await api.saveDailyProgress({ date: dailyProgress.date, items });
+      if (saved) setDailyProgress(saved);
+    }
   };
 
   const handleUpdatePR = async (id: string, newVal: string) => {
@@ -307,45 +398,65 @@ export default function App() {
   };
 
   const handleToggleMorningRoutine = async (id: string) => {
-    let nextStatus: 'pending' | 'in_progress' | 'completed' = 'pending';
+    // Prevent editing past days
+    if (dailyProgress && dailyProgress.date && isPastDate(dailyProgress.date)) {
+      return; // read-only
+    }
+
+    // Toggle locally for immediate UI
     setMorningRoutine((prev) =>
       prev.map((item) => {
         if (item.id === id) {
-          nextStatus =
-            item.status === 'pending'
-              ? 'in_progress'
-              : item.status === 'in_progress'
-              ? 'completed'
-              : 'pending';
+          const nextStatus = item.status === 'completed' ? 'pending' : 'completed';
           return { ...item, status: nextStatus };
         }
         return item;
       })
     );
 
-    // Persist in MongoDB
-    await api.updateRoutineItem(id, nextStatus);
+    // Update dailyProgress items and persist
+    if (dailyProgress) {
+      const items = dailyProgress.items.map((it: any) => {
+        if (it.id === id && it.type === 'routine') {
+          const completed = !it.completed;
+          return { ...it, completed, completedAt: completed ? new Date() : null };
+        }
+        return it;
+      });
+
+      const saved = await api.saveDailyProgress({ date: dailyProgress.date, items });
+      if (saved) setDailyProgress(saved);
+    }
   };
 
   const handleToggleEveningRoutine = async (id: string) => {
-    let nextStatus: 'pending' | 'in_progress' | 'completed' = 'pending';
+    // Prevent editing past days
+    if (dailyProgress && dailyProgress.date && isPastDate(dailyProgress.date)) {
+      return; // read-only
+    }
+
     setEveningRoutine((prev) =>
       prev.map((item) => {
         if (item.id === id) {
-          nextStatus =
-            item.status === 'pending'
-              ? 'in_progress'
-              : item.status === 'in_progress'
-              ? 'completed'
-              : 'pending';
+          const nextStatus = item.status === 'completed' ? 'pending' : 'completed';
           return { ...item, status: nextStatus };
         }
         return item;
       })
     );
 
-    // Persist in MongoDB
-    await api.updateRoutineItem(id, nextStatus);
+    if (dailyProgress) {
+      const items = dailyProgress.items.map((it: any) => {
+        if (it.id === id && it.type === 'routine') {
+          const completed = !it.completed;
+          return { ...it, completed, completedAt: completed ? new Date() : null };
+        }
+        return it;
+      });
+
+      const saved = await api.saveDailyProgress({ date: dailyProgress.date, items });
+      if (saved) setDailyProgress(saved);
+    }
   };
 
   const handleToggleSound = () => {
