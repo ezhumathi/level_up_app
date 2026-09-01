@@ -13,6 +13,7 @@ import {
   AchievementModel,
   ChatMessageModel,
   HeatmapDayModel,
+  DailyProgressModel,
 } from './server/db';
 import { seedInitialDataIfEmpty } from './server/seed';
 
@@ -26,9 +27,23 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(process.cwd(), 'public')));
 
 // Initialize MongoDB connection
-connectMongoDB().then(() => {
-  seedInitialDataIfEmpty();
+connectMongoDB().then((res) => {
+  if (res && (res as any).success) {
+    seedInitialDataIfEmpty();
+  } else {
+    console.warn('MongoDB not connected at startup; running in degraded local mode for development.');
+  }
 });
+
+// Helper to check live connection before DB operations
+function mongoAvailable() {
+  try {
+    const s = getMongoStatus();
+    return s && s.isConnected;
+  } catch {
+    return false;
+  }
+}
 
 // Lazy-initialized GoogleGenAI client
 let aiClient: GoogleGenAI | null = null;
@@ -83,6 +98,9 @@ app.get('/api/data', async (req, res) => {
     const morningRoutine = routines.filter((r) => r.category === 'morning');
     const eveningRoutine = routines.filter((r) => r.category === 'evening');
 
+    // Load heatmap days for quick progress overview
+    const heatmapDays = await HeatmapDayModel.find({ userId: 'default_user' }).sort({ date: 1 }).lean();
+
     res.json({
       userStats: userStats || {},
       missions: missions || [],
@@ -92,6 +110,7 @@ app.get('/api/data', async (req, res) => {
       eveningRoutine: eveningRoutine || [],
       achievements: achievements || [],
       chatMessages: chatMessages || [],
+      heatmapDays: heatmapDays || [],
       mongoConnected: true,
     });
   } catch (error: any) {
@@ -328,6 +347,135 @@ app.post('/api/routines/reset-day', async (req, res) => {
     res.json({ success: true, message: 'Daily protocol reset for new day' });
   } catch (error: any) {
     console.error('Error resetting daily routine:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DAILY PROGRESS API: per-day habit tracking and automatic locking of previous days
+function getTodayDateStr() {
+  // Use UTC YYYY-MM-DD for consistency; adjust later for timezone service if needed
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function lockPreviousDaysIfNeeded() {
+  try {
+    if (!mongoAvailable()) {
+      // skip when MongoDB is not available to avoid buffering/timeouts
+      return;
+    }
+
+    const today = getTodayDateStr();
+    await DailyProgressModel.updateMany(
+      { userId: 'default_user', date: { $lt: today }, locked: false },
+      { $set: { locked: true } }
+    );
+  } catch (err) {
+    console.error('Error locking previous days:', err);
+  }
+}
+
+// Run once at startup and periodically (every 15 minutes) to catch timezone/day changes
+lockPreviousDaysIfNeeded();
+let lastChecked = getTodayDateStr();
+setInterval(async () => {
+  try {
+    const today = getTodayDateStr();
+    if (today !== lastChecked) {
+      // Day changed on server clock — lock older docs
+      await lockPreviousDaysIfNeeded();
+      lastChecked = today;
+      console.log('Daily rollover detected, previous days locked where applicable.');
+    }
+  } catch (err) {
+    console.error('Periodic daily check error:', err);
+  }
+}, 15 * 60 * 1000);
+
+// Get daily progress (query param ?date=YYYY-MM-DD optional)
+app.get('/api/daily-progress', async (req, res) => {
+  try {
+    const date = (req.query.date as string) || getTodayDateStr();
+    const doc = await DailyProgressModel.findOne({ userId: 'default_user', date }).lean();
+    if (!doc) {
+      return res.json({ date, userId: 'default_user', habits: [], completionPercentage: 0, locked: false });
+    }
+    res.json(doc);
+  } catch (error: any) {
+    console.error('Error fetching daily progress:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get daily progress by path param
+app.get('/api/daily-progress/:date', async (req, res) => {
+  try {
+    const { date } = req.params;
+    const doc = await DailyProgressModel.findOne({ userId: 'default_user', date }).lean();
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    res.json(doc);
+  } catch (error: any) {
+    console.error('Error fetching daily progress by date:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create or update daily progress (upsert). Prevent edits to locked past days.
+app.post('/api/daily-progress', async (req, res) => {
+  try {
+    const { date, habits, completionPercentage } = req.body;
+    if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
+    const today = getTodayDateStr();
+
+    const existing = await DailyProgressModel.findOne({ userId: 'default_user', date });
+    if (existing && existing.locked && date !== today) {
+      return res.status(403).json({ error: 'Day is locked and read-only' });
+    }
+
+    const upsertObj: any = {
+      date,
+      userId: 'default_user',
+      habits: habits || [],
+      completionPercentage: typeof completionPercentage === 'number' ? completionPercentage : 0,
+      locked: date !== today, // lock if not today
+    };
+
+    const updated = await DailyProgressModel.findOneAndUpdate(
+      { userId: 'default_user', date },
+      { $set: upsertObj },
+      { new: true, upsert: true }
+    );
+
+    // Also update HeatmapDay summary for quick heatmap reads
+    try {
+      // derive a simple intensity count for heatmap (0-4) from percentage
+      const pct = upsertObj.completionPercentage || 0;
+      let intensity = 0;
+      if (pct >= 80) intensity = 4;
+      else if (pct >= 60) intensity = 3;
+      else if (pct >= 40) intensity = 2;
+      else if (pct >= 20) intensity = 1;
+
+      await HeatmapDayModel.findOneAndUpdate(
+        { userId: 'default_user', date },
+        {
+          $set: {
+            userId: 'default_user',
+            date,
+            score: upsertObj.completionPercentage || 0,
+            missionsCount: upsertObj.habits ? upsertObj.habits.length : 0,
+            dayOfWeek: new Date(date).getDay(),
+            count: intensity,
+          },
+        },
+        { upsert: true, new: true }
+      );
+    } catch (heatErr) {
+      console.error('Failed to update heatmap day from daily progress:', heatErr);
+    }
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error upserting daily progress:', error);
     res.status(500).json({ error: error.message });
   }
 });

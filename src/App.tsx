@@ -173,6 +173,9 @@ export default function App() {
         if (Array.isArray(data.achievements) && data.achievements.length > 0) {
           setAchievements(data.achievements);
         }
+        if (Array.isArray((data as any).heatmapDays) && (data as any).heatmapDays.length > 0) {
+          setHeatmapDays((data as any).heatmapDays);
+        }
       }
 
       // Load or create today's daily progress

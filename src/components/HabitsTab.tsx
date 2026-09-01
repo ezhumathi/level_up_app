@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Activity,
   Trophy,
@@ -16,6 +16,8 @@ import {
 import { FitnessGauge, PersonalRecord, RoutineItem } from '../types';
 import { WorkoutTimerModal } from './WorkoutTimerModal';
 import { soundFx } from '../utils/audio';
+import { api } from '../services/api';
+import { getTodayLocalKey } from '../services/dateService';
 
 interface HabitsTabProps {
   fitnessGauges: FitnessGauge[];
@@ -48,6 +50,48 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
 
   const [editingPR, setEditingPR] = useState<PersonalRecord | null>(null);
   const [prInput, setPrInput] = useState('');
+
+  const todayKey = getTodayLocalKey();
+  const [dailyProgress, setDailyProgress] = useState<any>({ date: todayKey, habits: [], completionPercentage: 0, locked: false });
+
+  useEffect(() => {
+    // load today's daily progress and fall back to routine items
+    let mounted = true;
+    async function load() {
+      const res = await api.getDailyProgress(todayKey);
+      if (!mounted) return;
+      if (res && res.date) {
+        setDailyProgress(res);
+      } else {
+        // create initial habits list from routines
+        const combined = [...morningRoutine, ...eveningRoutine].map((r) => ({
+          id: r.id,
+          title: r.title,
+          completed: r.status === 'completed',
+          progressCurrent: 0,
+          progressMax: 0,
+          unit: 'item',
+        }));
+        setDailyProgress({ date: todayKey, habits: combined, completionPercentage: 0, locked: false });
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, [todayKey, morningRoutine, eveningRoutine]);
+
+  const saveDailyProgressToServer = async (nextProgress: any) => {
+    if (!nextProgress || !nextProgress.date) return;
+    try {
+      await api.saveDailyProgress({
+        date: nextProgress.date,
+        habits: nextProgress.habits,
+        completionPercentage: nextProgress.completionPercentage || 0,
+      });
+    } catch (err) {
+      console.error('Failed to save daily progress:', err);
+    }
+  };
+
 
   const openWorkoutModal = (gauge: FitnessGauge) => {
     soundFx.playClick();
@@ -286,9 +330,27 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
             return (
               <div
                 key={item.id}
-                onClick={() => {
+                onClick={async () => {
                   soundFx.playClick();
+                  // If daily progress is locked for this date, disallow toggles
+                  if (dailyProgress.locked && dailyProgress.date !== todayKey) return;
+
+                  // Optimistically update daily progress habits
+                  const next = { ...dailyProgress };
+                  const idx = next.habits.findIndex((h: any) => h.id === item.id);
+                  if (idx >= 0) {
+                    next.habits[idx] = { ...next.habits[idx], completed: !next.habits[idx].completed };
+                  } else {
+                    next.habits.push({ id: item.id, title: item.title, completed: true });
+                  }
+                  const completedCount = next.habits.filter((h: any) => h.completed).length;
+                  const totalCount = next.habits.length || 1;
+                  next.completionPercentage = Math.round((completedCount / totalCount) * 100);
+                  setDailyProgress(next);
+
+                  // Persist both routine item state and daily progress
                   onToggleMorningRoutine(item.id);
+                  await saveDailyProgressToServer(next);
                 }}
                 className={`p-3.5 rounded-xl flex items-center justify-between cursor-pointer transition-all select-none ${
                   isDone
@@ -365,9 +427,24 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
             return (
               <div
                 key={item.id}
-                onClick={() => {
+                onClick={async () => {
                   soundFx.playClick();
+                  if (dailyProgress.locked && dailyProgress.date !== todayKey) return;
+
+                  const next = { ...dailyProgress };
+                  const idx = next.habits.findIndex((h: any) => h.id === item.id);
+                  if (idx >= 0) {
+                    next.habits[idx] = { ...next.habits[idx], completed: !next.habits[idx].completed };
+                  } else {
+                    next.habits.push({ id: item.id, title: item.title, completed: true });
+                  }
+                  const completedCount = next.habits.filter((h: any) => h.completed).length;
+                  const totalCount = next.habits.length || 1;
+                  next.completionPercentage = Math.round((completedCount / totalCount) * 100);
+                  setDailyProgress(next);
+
                   onToggleEveningRoutine(item.id);
+                  await saveDailyProgressToServer(next);
                 }}
                 className={`p-3.5 rounded-xl flex items-center justify-between cursor-pointer transition-all select-none ${
                   isDone

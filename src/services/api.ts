@@ -1,4 +1,4 @@
-import { UserStats, Mission, FitnessGauge, PersonalRecord, RoutineItem, Achievement, ChatMessage } from '../types';
+import { UserStats, Mission, FitnessGauge, PersonalRecord, RoutineItem, Achievement, ChatMessage, HeatmapDay } from '../types';
 
 export interface FullAppData {
   userStats: UserStats;
@@ -9,6 +9,7 @@ export interface FullAppData {
   eveningRoutine: RoutineItem[];
   achievements: Achievement[];
   chatMessages: ChatMessage[];
+  heatmapDays?: HeatmapDay[];
   mongoConnected: boolean;
 }
 
@@ -173,6 +174,33 @@ export const api = {
     } catch (err) {
       console.error('MongoDB reset day error:', err);
       return false;
+    }
+  },
+
+  async getDailyProgress(date?: string): Promise<any> {
+    try {
+      const url = date ? `/api/daily-progress?date=${encodeURIComponent(date)}` : '/api/daily-progress';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Fetch daily progress failed');
+      return await res.json();
+    } catch (err) {
+      console.error('MongoDB fetch daily progress error:', err);
+      return null;
+    }
+  },
+
+  async saveDailyProgress(payload: { date: string; habits: any[]; completionPercentage: number }): Promise<any | null> {
+    try {
+      const res = await fetch('/api/daily-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Save daily progress failed');
+      return await res.json();
+    } catch (err) {
+      console.error('MongoDB save daily progress error:', err);
+      return null;
     }
   },
 
