@@ -684,9 +684,15 @@ app.post('/api/daily-progress', async (req, res) => {
   }
 });
 
+import fs from 'fs';
+
 // Start Server and Vite Middleware
 async function start() {
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(distPath);
+
+  // If we have a built dist folder, prefer serving that in any environment.
+  if (!hasDist && process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -694,14 +700,16 @@ async function start() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    // Serve static files (CSS, JS, images, etc)
-    app.use(express.static(distPath, { 
-      extensions: ['html', 'js', 'css', 'json', 'jpg', 'png']
+    // Serve static files from dist when available, otherwise fallback to public
+    const servePath = hasDist ? distPath : path.join(process.cwd(), 'public');
+    app.use(express.static(servePath, {
+      extensions: ['html', 'js', 'css', 'json', 'jpg', 'png'],
     }));
+
     // Catch-all for SPA: serve index.html for all non-API routes
     app.get(/^(?!\/api).*/, (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+      const indexFile = hasDist ? path.join(distPath, 'index.html') : path.join(servePath, 'index.html');
+      res.sendFile(indexFile, (err) => {
         if (err) {
           console.error('Error serving index.html:', err);
           res.status(404).send('Not Found');
@@ -710,8 +718,9 @@ async function start() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`⚡ Aura Kinetic HUD server running at http://0.0.0.0:${PORT} with MongoDB Atlas`);
+  const listenPort = Number(process.env.PORT || '3000');
+  app.listen(listenPort, '0.0.0.0', () => {
+    console.log(`⚡ Aura Kinetic HUD server running at http://0.0.0.0:${listenPort} with MongoDB Atlas`);
   });
 }
 
