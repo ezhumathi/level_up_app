@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { UserStats } from '../types';
 import { soundFx } from '../utils/audio';
-import bhuvaneshRealPhoto from '../assets/images/bhuvanesh_real_upload.jpg';
+import bhuvaneshRealPhoto from '../assets/images/profile_upload.png';
 
 interface ProfileTabProps {
   userStats: UserStats;

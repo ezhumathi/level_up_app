@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flame, Plus, Volume2, VolumeX } from 'lucide-react';
 import { TabType, UserStats } from '../types';
-import bhuvaneshRealPhoto from '../assets/images/bhuvanesh_real_upload.jpg';
+import bhuvaneshRealPhoto from '../assets/images/profile_upload.png';
 
 interface TopAppBarProps {
   userStats: UserStats;

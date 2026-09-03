@@ -3,7 +3,7 @@ import { Send, Bot, Sparkles, Database } from 'lucide-react';
 import { ChatMessage, Mission, UserStats } from '../types';
 import { soundFx } from '../utils/audio';
 import { api } from '../services/api';
-import bhuvaneshRealPhoto from '../assets/images/bhuvanesh_real_upload.jpg';
+import bhuvaneshRealPhoto from '../assets/images/profile_upload.png';
 
 interface AiTabProps {
   userStats: UserStats;
