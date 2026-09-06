@@ -173,8 +173,13 @@ export default function App() {
         if (Array.isArray(data.achievements) && data.achievements.length > 0) {
           setAchievements(data.achievements);
         }
-        if (Array.isArray((data as any).heatmapDays) && (data as any).heatmapDays.length > 0) {
-          setHeatmapDays((data as any).heatmapDays);
+        if (Array.isArray((data as any).heatmapDays)) {
+          // Merge server-provided heatmap entries into a full 365-day array so the UI shows a continuous grid
+          const serverDays: any[] = (data as any).heatmapDays;
+          const serverMap = new Map(serverDays.map((d) => [d.date, d]));
+          const full = generate365DaysHeatmap();
+          const merged = full.map((d) => serverMap.get(d.date) || d);
+          setHeatmapDays(merged);
         }
       }
 
