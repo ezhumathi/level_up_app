@@ -66,8 +66,8 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         <div className="relative shrink-0 flex items-center justify-center">
           <div className="w-44 h-60 sm:w-52 sm:h-72 rounded-2xl overflow-hidden border-2 border-[#558dff] shadow-[0_0_30px_rgba(85,141,255,0.35)] bg-[#141824] relative flex items-center justify-center">
             <img
-              src={bhuvaneshRealPhoto}
-              alt="Bhuvanesh Real Photo"
+            src={userStats.userPhotoUrl || userStats.avatarUrl || bhuvaneshRealPhoto}
+            alt={userStats.name || 'User Photo'}
               className="w-full h-full object-cover block"
               style={{ objectPosition: 'center 12%' }}
             />
