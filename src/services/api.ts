@@ -177,32 +177,6 @@ export const api = {
     }
   },
 
-  async getDailyProgress(date?: string): Promise<any> {
-    try {
-      const url = date ? `/api/daily-progress?date=${encodeURIComponent(date)}` : '/api/daily-progress';
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Fetch daily progress failed');
-      return await res.json();
-    } catch (err) {
-      console.error('MongoDB fetch daily progress error:', err);
-      return null;
-    }
-  },
-
-  async saveDailyProgress(payload: { date: string; habits: any[]; completionPercentage: number }): Promise<any | null> {
-    try {
-      const res = await fetch('/api/daily-progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('Save daily progress failed');
-      return await res.json();
-    } catch (err) {
-      console.error('MongoDB save daily progress error:', err);
-      return null;
-    }
-  },
 
   async sendChatMessage(
     message: string,
@@ -218,6 +192,44 @@ export const api = {
       return await res.json();
     } catch (err) {
       console.error('Chat error:', err);
+      return null;
+    }
+  },
+
+  // Daily progress APIs
+  async getDailyProgress(date: string): Promise<any | null> {
+    try {
+      const res = await fetch(`/api/daily-progress/${date}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('getDailyProgress error:', err);
+      return null;
+    }
+  },
+
+  async saveDailyProgress(payload: { date: string; items: any[] }): Promise<any | null> {
+    try {
+      const res = await fetch('/api/daily-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Save daily progress failed');
+      return await res.json();
+    } catch (err) {
+      console.error('saveDailyProgress error:', err);
+      return null;
+    }
+  },
+
+  async fetchDailyRange(start: string, end: string): Promise<any[] | null> {
+    try {
+      const res = await fetch(`/api/daily-progress?start=${start}&end=${end}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error('fetchDailyRange error:', err);
       return null;
     }
   },

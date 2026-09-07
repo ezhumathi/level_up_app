@@ -130,19 +130,18 @@ const HeatmapDaySchema = new mongoose.Schema(
 );
 HeatmapDaySchema.index({ date: 1, userId: 1 }, { unique: true });
 
-// DailyProgress: stores per-day habit progress, locked after the day ends
+// DailyProgress: stores per-day habit states for a user
 const DailyProgressSchema = new mongoose.Schema(
   {
     date: { type: String, required: true }, // YYYY-MM-DD
     userId: { type: String, default: 'default_user' },
-    habits: [
+    // items can reference missions, routines, gauges by id and hold completed state
+    items: [
       {
-        id: { type: String },
-        title: { type: String },
+        id: { type: String, required: true },
+        type: { type: String, enum: ['mission', 'routine', 'gauge'], required: true },
         completed: { type: Boolean, default: false },
-        progressCurrent: { type: Number },
-        progressMax: { type: Number },
-        unit: { type: String },
+        completedAt: { type: Date, default: null },
       },
     ],
     completionPercentage: { type: Number, default: 0 },

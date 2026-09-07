@@ -20,7 +20,7 @@ import { seedInitialDataIfEmpty } from './server/seed';
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || '3000');
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -601,9 +601,110 @@ Coach Persona:
   }
 });
 
+// Daily Progress API (per-day habit state)
+
+// Helper to normalize date key YYYY-MM-DD
+function normalizeDateKey(dateStr: string) {
+  // Accept either YYYY-MM-DD or ISO date strings; return YYYY-MM-DD
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Get daily progress for a specific date
+app.get('/api/daily-progress/:date', async (req, res) => {
+  try {
+    const dateKey = normalizeDateKey(req.params.date);
+    const dp = await DailyProgressModel.findOne({ date: dateKey, userId: 'default_user' }).lean();
+    if (!dp) return res.status(404).json({ message: 'Not found' });
+    res.json(dp);
+  } catch (error: any) {
+    console.error('Error fetching daily progress:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+// Query daily progress in a date range: /api/daily-progress?start=YYYY-MM-DD&end=YYYY-MM-DD
+app.get('/api/daily-progress', async (req, res) => {
+  try {
+    const { start, end } = req.query as any;
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Provide start and end query parameters' });
+    }
+    const startKey = normalizeDateKey(start);
+    const endKey = normalizeDateKey(end);
+    const rows = await DailyProgressModel.find({
+      date: { $gte: startKey, $lte: endKey },
+      userId: 'default_user',
+    }).lean();
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Error querying daily progress:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+// Create or update daily progress (upsert). Body: { date: 'YYYY-MM-DD', items: [...] }
+app.post('/api/daily-progress', async (req, res) => {
+  try {
+    const { date, items } = req.body;
+    if (!date || !Array.isArray(items)) return res.status(400).json({ error: 'Invalid payload' });
+    const dateKey = normalizeDateKey(date);
+
+    // Prevent modifying past days
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (dateKey < todayKey) {
+      return res.status(400).json({ error: 'Cannot modify past days' });
+    }
+
+    const total = items.length;
+    const completedCount = items.filter((i: any) => i.completed).length;
+    const completionPercentage = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+    const doc = await DailyProgressModel.findOneAndUpdate(
+      { date: dateKey, userId: 'default_user' },
+      {
+        $set: {
+          items,
+          completionPercentage,
+          locked: false,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // Update HeatmapDayModel to reflect this day's completion
+    await HeatmapDayModel.findOneAndUpdate(
+      { date: dateKey, userId: 'default_user' },
+      {
+        $set: {
+          score: completionPercentage,
+          missionsCount: total,
+          dayOfWeek: new Date(dateKey).getDay(),
+        },
+      },
+      { upsert: true }
+    );
+
+    res.json(doc);
+  } catch (error: any) {
+    console.error('Error saving daily progress:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+});
+
+import fs from 'fs';
+
 // Start Server and Vite Middleware
 async function start() {
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(distPath);
+
+  // If we have a built dist folder, prefer serving that in any environment.
+  if (!hasDist && process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -611,14 +712,16 @@ async function start() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    // Serve static files (CSS, JS, images, etc)
-    app.use(express.static(distPath, { 
-      extensions: ['html', 'js', 'css', 'json', 'jpg', 'png']
+    // Serve static files from dist when available, otherwise fallback to public
+    const servePath = hasDist ? distPath : path.join(process.cwd(), 'public');
+    app.use(express.static(servePath, {
+      extensions: ['html', 'js', 'css', 'json', 'jpg', 'png'],
     }));
+
     // Catch-all for SPA: serve index.html for all non-API routes
     app.get(/^(?!\/api).*/, (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'), (err) => {
+      const indexFile = hasDist ? path.join(distPath, 'index.html') : path.join(servePath, 'index.html');
+      res.sendFile(indexFile, (err) => {
         if (err) {
           console.error('Error serving index.html:', err);
           res.status(404).send('Not Found');
@@ -627,8 +730,9 @@ async function start() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`⚡ Aura Kinetic HUD server running at http://0.0.0.0:${PORT} with MongoDB Atlas`);
+  const listenPort = Number(process.env.PORT || '3000');
+  app.listen(listenPort, '0.0.0.0', () => {
+    console.log(`⚡ Aura Kinetic HUD server running at http://0.0.0.0:${listenPort} with MongoDB Atlas`);
   });
 }
 
