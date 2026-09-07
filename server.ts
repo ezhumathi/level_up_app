@@ -80,7 +80,10 @@ app.get('/api/db-status', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   try {
     // Ensure DB is connected
-    await connectMongoDB();
+    const connection = await connectMongoDB();
+    if (!connection.success || !mongoAvailable()) {
+      return res.status(503).json({ error: 'MongoDB is unavailable', mongoConnected: false });
+    }
 
     let userStats = await UserStatsModel.findOne({ userId: 'default_user' }).lean();
     if (!userStats) {
@@ -394,6 +397,9 @@ setInterval(async () => {
 // Get daily progress (query param ?date=YYYY-MM-DD optional)
 app.get('/api/daily-progress', async (req, res) => {
   try {
+    if (!mongoAvailable()) {
+      return res.status(503).json({ error: 'MongoDB is unavailable', mongoConnected: false });
+    }
     const date = (req.query.date as string) || getTodayDateStr();
     const doc = await DailyProgressModel.findOne({ userId: 'default_user', date }).lean();
     if (!doc) {
@@ -409,6 +415,9 @@ app.get('/api/daily-progress', async (req, res) => {
 // Get daily progress by path param
 app.get('/api/daily-progress/:date', async (req, res) => {
   try {
+    if (!mongoAvailable()) {
+      return res.status(503).json({ error: 'MongoDB is unavailable', mongoConnected: false });
+    }
     const { date } = req.params;
     const doc = await DailyProgressModel.findOne({ userId: 'default_user', date }).lean();
     if (!doc) return res.status(404).json({ error: 'Not found' });
@@ -422,6 +431,9 @@ app.get('/api/daily-progress/:date', async (req, res) => {
 // Create or update daily progress (upsert). Prevent edits to locked past days.
 app.post('/api/daily-progress', async (req, res) => {
   try {
+    if (!mongoAvailable()) {
+      return res.status(503).json({ error: 'MongoDB is unavailable', mongoConnected: false });
+    }
     const { date, habits, completionPercentage } = req.body;
     if (!date) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
     const today = getTodayDateStr();

@@ -33,7 +33,15 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         <div className="relative shrink-0 flex items-center justify-center">
           <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-[#558dff] shadow-[0_0_15px_rgba(85,141,255,0.45)] bg-[#141824] aspect-square flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
             <img
-              src={userStats.avatarUrl || userStats.userPhotoUrl || bhuvaneshRealPhoto}
+              src={
+                userStats.avatarUrl?.startsWith('data:') ||
+                userStats.avatarUrl?.startsWith('http')
+                  ? userStats.avatarUrl
+                  : userStats.userPhotoUrl?.startsWith('data:') ||
+                    userStats.userPhotoUrl?.startsWith('http')
+                  ? userStats.userPhotoUrl
+                  : bhuvaneshRealPhoto
+              }
               alt={userStats.name || 'User'}
               className="w-full h-full object-cover block"
               style={{ objectPosition: '50% 12%' }}

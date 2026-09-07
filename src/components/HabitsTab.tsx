@@ -58,9 +58,12 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
     // load today's daily progress and fall back to routine items
     let mounted = true;
     async function load() {
+      const local = localStorage.getItem(`daily-progress:${todayKey}`);
       const res = await api.getDailyProgress(todayKey);
       if (!mounted) return;
-      if (res && res.date) {
+      if (local) {
+        setDailyProgress(JSON.parse(local));
+      } else if (res && res.date) {
         setDailyProgress(res);
       } else {
         // create initial habits list from routines
@@ -81,6 +84,7 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
 
   const saveDailyProgressToServer = async (nextProgress: any) => {
     if (!nextProgress || !nextProgress.date) return;
+    localStorage.setItem(`daily-progress:${nextProgress.date}`, JSON.stringify(nextProgress));
     try {
       await api.saveDailyProgress({
         date: nextProgress.date,
@@ -318,7 +322,7 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
         <div className="flex items-center gap-2 text-amber-400">
           <Sun className="w-5 h-5" />
           <h2 className="font-mono text-base font-bold tracking-wider text-white uppercase">
-            Morning Routine
+            Good Morning
           </h2>
         </div>
 
@@ -415,7 +419,7 @@ export const HabitsTab: React.FC<HabitsTabProps> = ({
         <div className="flex items-center gap-2 text-indigo-400">
           <Moon className="w-5 h-5" />
           <h2 className="font-mono text-base font-bold tracking-wider text-white uppercase">
-            Evening Routine
+            Good Evening
           </h2>
         </div>
 
