@@ -179,7 +179,7 @@ export const INITIAL_MORNING_ROUTINE: RoutineItem[] = [
   },
   {
     id: 'mr-3',
-    title: 'Yoga',
+    title: 'Meditation',
     time: '05:45 AM',
     status: 'pending',
     category: 'morning',

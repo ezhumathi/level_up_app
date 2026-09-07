@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   TrendingUp,
   Flame,
@@ -15,6 +15,8 @@ import {
 import { Achievement, HeatmapDay, UserStats } from '../types';
 import { WEEKLY_SCORES } from '../data/mockData';
 import { soundFx } from '../utils/audio';
+import { formatDateKey } from '../services/dateService';
+import { generate365DaysHeatmap } from '../data/mockData';
 
 interface ProgressTabProps {
   userStats: UserStats;
@@ -30,12 +32,36 @@ export const ProgressTab: React.FC<ProgressTabProps> = ({
   const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
   const [timeframe, setTimeframe] = useState<'This Week' | 'Last Week' | 'Monthly Average'>('This Week');
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
+  const [visibleHeatmapDays, setVisibleHeatmapDays] = useState<HeatmapDay[]>(heatmapDays);
+
+  useEffect(() => {
+    const localDays = new Map<string, HeatmapDay>();
+    const full = generate365DaysHeatmap();
+    full.forEach((day) => {
+      const saved = localStorage.getItem(`daily-progress:${day.date}`);
+      if (!saved) return;
+      try {
+        const progress = JSON.parse(saved);
+        const score = Math.max(0, Math.min(100, Number(progress.completionPercentage) || 0));
+        localDays.set(day.date, {
+          ...day,
+          score,
+          count: score >= 80 ? 4 : score >= 60 ? 3 : score >= 40 ? 2 : score >= 20 ? 1 : 0,
+          missionsCount: Array.isArray(progress.habits) ? progress.habits.length : 0,
+        });
+      } catch {
+        // Ignore malformed local records and retain the empty day.
+      }
+    });
+    const serverDays = new Map(heatmapDays.map((day) => [day.date, day]));
+    setVisibleHeatmapDays(full.map((day) => localDays.get(day.date) || serverDays.get(day.date) || day));
+  }, [heatmapDays]);
 
   // Group heatmap days by weeks (52 columns of 7 days)
   const weeks: HeatmapDay[][] = [];
   let currentWeek: HeatmapDay[] = [];
 
-  heatmapDays.forEach((day, index) => {
+  visibleHeatmapDays.forEach((day, index) => {
     currentWeek.push(day);
     if (currentWeek.length === 7 || index === heatmapDays.length - 1) {
       weeks.push(currentWeek);

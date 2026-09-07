@@ -190,7 +190,7 @@ const INITIAL_MORNING_ROUTINE = [
   },
   {
     id: 'mr-3',
-    title: 'Yoga',
+    title: 'Meditation',
     time: '05:45 AM',
     status: 'pending',
     category: 'morning',
@@ -300,6 +300,11 @@ const INITIAL_ACHIEVEMENTS = [
 
 export async function seedInitialDataIfEmpty(forceReset: boolean = false) {
   try {
+    await RoutineItemModel.updateMany(
+      { userId: 'default_user', title: 'Yoga' },
+      { $set: { title: 'Meditation' } }
+    );
+
     if (forceReset) {
       await Promise.all([
         UserStatsModel.deleteMany({ userId: 'default_user' }),

@@ -159,7 +159,11 @@ export default function App() {
           setPersonalRecords(data.personalRecords);
         }
         if (Array.isArray(data.morningRoutine) && data.morningRoutine.length > 0) {
-          setMorningRoutine(data.morningRoutine);
+          setMorningRoutine(
+            data.morningRoutine.map((item) =>
+              item.title === 'Yoga' ? { ...item, title: 'Meditation' } : item
+            )
+          );
         }
         if (Array.isArray(data.eveningRoutine) && data.eveningRoutine.length > 0) {
           setEveningRoutine(data.eveningRoutine);
